@@ -3,9 +3,9 @@
 
 ```bash
 
-git clone
+git clone https://github.com/Sh4dx0r/Sayphra.git
 
-cd spyhunt
+cd Sayphra
 
 pip3 install -r requirements.txt
 
@@ -16,7 +16,7 @@ sudo python3 install.py
 # USAGE 
 
 ```
-python spyhunt.py [-h] [-sv filename.txt]  [-s domain.com]
+python sayphra.py [-h] [-sv filename.txt]  [-s domain.com]
                   [-d domains.com]
                   [-wc https://domain.com] [-fi https://domain.com]
                   [-fm https://domain.com] [-na https://domain.com]
@@ -38,11 +38,11 @@ options:
 # EXAMPLE
 Scan for subdomains and save the output to a file.
 ```
-python3 sayphra.py -s yahoo.com --save filename.txt
+python3 sayphra.py -s domain.com --save filename.txt
 ```
 Scan for dns records
 ```
-python3 sayphra.py -d yahoo.com
+python3 sayphra.py -d domain.com
 ```
 Scan for FavIcon hashes
 ```
