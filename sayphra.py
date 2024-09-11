@@ -5,14 +5,17 @@ from os import path, mkdir
 from builtwith import builtwith
 from modules.favicon import *
 from bs4 import BeautifulSoup
+from multiprocessing.pool import ThreadPool
+import multiprocessing
 import re
-import re
-import requests
+from alive_progress import alive_bar
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from requests.exceptions import RequestException
 import os.path
 from modules import user_agents
 import socket
 import subprocess
+import threading
 import sys
 import socket
 import os
@@ -55,24 +58,47 @@ def commands(cmd):
 parser = argparse.ArgumentParser()
 group = parser.add_mutually_exclusive_group()
 
+vuln_group = parser.add_argument_group('Vulnerability')
+fuzzing_group = parser.add_argument_group('Fuzzing')
+
 group.add_argument('-sv', '--save', action='store',
-                   help="save output to file",
+                   help="Save output to a file",
                    metavar="filename.txt")
 
 parser.add_argument('-s',
-                    type=str, help='scan for subdomains',
+                    type=str, help='Scan for Subdomains',
                     metavar='domain.com')
 
 parser.add_argument('-d', '--dns',
-                    type=str, help='scan for dns records',
+                    type=str, help='Scan for DNS records',
                     metavar='domain.com')
 
+parser.add_argument('-p', '--probe',
+                    type=str, help='Probe Domains.',
+                    metavar='domains.txt')                    
+
+parser.add_argument('-df', '--directoryforce',
+                    type=str, help='Brute force filenames and directories',
+                    metavar='domain.com')                    
+
+fuzzing_group.add_argument('-wl', '--wordlist', action='store',
+                   help="wordlist to use",
+                   metavar="filename.txt")
+
+parser.add_argument('-th', '--threads',
+                    type=str, help='default 25',
+                    metavar='25')                    
+
+fuzzing_group.add_argument("-e", "--extensions", help="Comma-separated list of file extensions to scan", default="")
+
+fuzzing_group.add_argument("-c", "--exclude", help="Comma-separated list of status codes to filter", default="")
+
 parser.add_argument('-wc', '--webcrawler',
-                    type=str, help='scan for urls and js files',
+                    type=str, help='Scan for urls and js files',
                     metavar='https://domain.com')
 
 parser.add_argument('-fi', '--favicon',
-                    type=str, help='get favicon hashes',
+                    type=str, help='Get favicon hashes',
                     metavar='https://domain.com')
 
 parser.add_argument('-fm', '--faviconmulti',
@@ -80,11 +106,11 @@ parser.add_argument('-fm', '--faviconmulti',
                     metavar='https://domain.com')
 
 parser.add_argument('-na', '--networkanalyzer',
-                    type=str, help='net analyzer',
+                    type=str, help='Net Analyzer',
                     metavar='https://domain.com')
 
 parser.add_argument('-sh', '--securityheaders',
-                    type=str, help='scan for security headers',
+                    type=str, help='Scan for Security Headers',
                     metavar='domain.com')
 
 parser.add_argument('-ed', '--enumeratedomain',
@@ -196,8 +222,115 @@ if args.enumeratedomain:
     else:
         print(f"{Fore.WHITE}{args.enumeratedomain}{Fore.MAGENTA}: {Fore.CYAN}[{ip}]")
 
-    
+if args.probe:
+    if args.save:
+        print(Fore.CYAN + "Saving output to {}...".format(args.save))
+        commands(f'cat {args.probe} | httprobe -c 100 | anew >> {args.save}')
+        if path.exists(f"{args.save}"):
+            print(Fore.GREEN + "DONE!")
+        if not path.exists(f"{args.save}"):
+            print(Fore.RED + "ERROR!")
+    else:
+        commands(f'sudo cat {args.probe} | httprobe | anew')        
 
+# Function to ensure the domain starts with 'https://'
+def ensure_https(domain: str) -> str:
+    if not domain.startswith('https://'):
+        domain = 'https://' + domain
+    return domain
+
+if args.directoryforce:
+    if args.wordlist:
+        if args.threads:
+            def filter_wordlist(wordlist, extensions):
+                """
+                Filters the wordlist based on the provided extensions.
+                If no extensions are provided, returns the original wordlist.
+                """
+                if not extensions:
+                    return wordlist
+                ext_list = [ext.strip() for ext in extensions.split(',')]
+                return [word for word in wordlist if any(word.endswith(ext) for ext in ext_list)]
+
+            def dorequests(wordlist: str, base_url: str, headers: dict, is_file_only: bool, excluded_codes: set, bar, print_lock):
+                """
+                Makes HTTP requests for each word in the wordlist and prints results.
+                """
+                s = requests.Session()  # Create a requests session for making HTTP requests
+                
+                def check_and_print(url, type_str):
+                    """
+                    Checks the URL and prints the status code and type of resource found.
+                    """
+                    try:
+                        r = s.get(url, verify=False, headers=headers, timeout=10)  # Perform GET request
+                        if r.status_code not in excluded_codes:  # Check if status code is not in excluded codes
+                            # Set colors based on status code
+                            if r.status_code == 200:
+                                status_code_color = Fore.GREEN
+                                url_color = Fore.GREEN
+                            elif r.status_code in {404, 400, 403}:
+                                status_code_color = Fore.RED
+                                url_color = Fore.RED
+                            else:
+                                status_code_color = Fore.YELLOW
+                                url_color = Fore.YELLOW  # Default color for other status codes
+                                
+                            with print_lock:
+                                # Print the status code and URL with respective colors
+                                print(f"{status_code_color}[{r.status_code}]{Fore.RESET} {Fore.WHITE}{type_str} Found: {url_color}{url}{Fore.RESET}")
+                    except requests.RequestException:
+                        pass
+                    finally:
+                        bar()  # Update the progress bar
+
+                # Form URL based on whether checking for files or directories
+                if is_file_only:
+                    url = f"{base_url}/{wordlist}"
+                    check_and_print(url, "File")
+                else:
+                    dir_url = f"{base_url}/{wordlist}/"
+                    check_and_print(dir_url, "Directory")
+                    
+            def main():
+                """
+                Main function that handles reading the wordlist, filtering, and making requests.
+                """
+                # Ensure the target URL starts with 'https://'
+                args.directoryforce = ensure_https(args.directoryforce)
+                
+                with open(args.wordlist, "r") as f:
+                    wordlist_ = [x.strip() for x in f.readlines()]  # Read and clean wordlist
+                
+                is_file_only = bool(args.extensions)  # Determine if only files are to be checked
+                
+                filtered_wordlist = filter_wordlist(wordlist_, args.extensions)  # Filter wordlist based on extensions
+                
+                excluded_codes = set(int(code.strip()) for code in args.exclude.split(',') if code.strip())  # Parse excluded status codes
+                
+                # Print initial information
+                print(f"Target: {Fore.CYAN}{args.directoryforce}{Fore.RESET}\n"
+                      f"Wordlist: {Fore.CYAN}{args.wordlist}{Fore.RESET}\n"
+                      f"Extensions: {Fore.CYAN}{args.extensions or 'All'}{Fore.RESET}\n"
+                      f"Filtered Status Codes: {Fore.RED}{', '.join(map(str, excluded_codes)) or 'None'}{Fore.RESET}\n")
+
+                headers = {'User-Agent': user_agent}  # Set headers for requests
+
+                print_lock = threading.Lock()  # Create a lock to ensure thread-safe printing
+
+                with alive_bar(len(filtered_wordlist), title="Scanning", bar="classic", spinner="classic") as bar:
+                    with ThreadPoolExecutor(max_workers=int(args.threads)) as executor:
+                        # Submit tasks to the thread pool for each word in the filtered wordlist
+                        futures = [executor.submit(dorequests, wordlist, args.directoryforce, headers, is_file_only, excluded_codes, bar, print_lock) 
+                                   for wordlist in filtered_wordlist]
+                        
+                        for future in as_completed(futures):
+                            future.result()  # Wait for all tasks to complete
+
+            if __name__ == "__main__":
+                main()
+
+                
 if args.faviconmulti:
     print(f"{Fore.MAGENTA}\t\t\t FavIcon Hashes\n")
     with open(f"{args.faviconmulti}") as f:
