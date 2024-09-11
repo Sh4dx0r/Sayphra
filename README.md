@@ -1,6 +1,6 @@
 # Description
 
-![Sayphra](https://ibb.co/qRNDQBn)
+![Sayphra](blob:null/be17f791-45a7-4710-a7fa-63f3dd345a7b)
 
 Sayphra is a powerful tool for network scanning and vulnerability assessment, designed for security professionals and penetration testers. It combines multiple scanning methods and integrates with various external tools to provide detailed insights into networks and web applications.
 
