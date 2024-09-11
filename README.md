@@ -1,5 +1,7 @@
 # Description
 
+![Spyhunt](https://github.com/gotr00t0day/spyhunt/blob/main/spyhunt_logo_cropped.png)
+
 Sayphra is a powerful tool for network scanning and vulnerability assessment, designed for security professionals and penetration testers. It combines multiple scanning methods and integrates with various external tools to provide detailed insights into networks and web applications.
 
 ## Here's a high overview of its functionality
