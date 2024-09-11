@@ -1,6 +1,6 @@
 # Description
 
-![Sayphra](blob:null/be17f791-45a7-4710-a7fa-63f3dd345a7b)
+![Sayphra](https://pngimgtree.com/wp-content/uploads/2024/05/DEER-2-scaled.webp)
 
 Sayphra is a powerful tool for network scanning and vulnerability assessment, designed for security professionals and penetration testers. It combines multiple scanning methods and integrates with various external tools to provide detailed insights into networks and web applications.
 
